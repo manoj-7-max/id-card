@@ -5,14 +5,28 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalSpaceAround,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  ChevronDown,
+  ChevronUp,
   Copy,
+  Eye,
+  EyeOff,
   Image,
+  Layers,
+  Lock,
   Minus,
   QrCode,
   RectangleHorizontal,
   RotateCcw,
+  Settings,
   Trash2,
   Type,
+  Unlock,
   Upload,
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
@@ -44,6 +58,7 @@ function makeElement(type: CanvasElementType): CanvasElement {
 export default function TemplateDesigner() {
   const { state, dispatch } = useApp();
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'properties' | 'layers'>('properties');
   const template = state.activeTemplate;
   const elements = useMemo(
     () => (state.activeCardSide === 'front' ? template?.frontElements : template?.backElements) || [],
@@ -108,6 +123,32 @@ export default function TemplateDesigner() {
     input.click();
   };
 
+  const reorderLayer = (id: string, direction: 'up' | 'down') => {
+    const idx = elements.findIndex(e => e.id === id);
+    if (idx < 0) return;
+    if (direction === 'up' && idx < elements.length - 1) {
+      const next = [...elements];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      updateElements(next);
+    } else if (direction === 'down' && idx > 0) {
+      const next = [...elements];
+      [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
+      updateElements(next);
+    }
+  };
+
+  const alignSelected = (align: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    if (!selected || !template) return;
+    let patch: Partial<CanvasElement> = {};
+    if (align === 'left') patch.x = 0;
+    if (align === 'center') patch.x = (template.canvasWidth - selected.width) / 2;
+    if (align === 'right') patch.x = template.canvasWidth - selected.width;
+    if (align === 'top') patch.y = 0;
+    if (align === 'middle') patch.y = (template.canvasHeight - selected.height) / 2;
+    if (align === 'bottom') patch.y = template.canvasHeight - selected.height;
+    patchElement(selected.id, patch);
+  };
+
   return (
     <div className="designer-shell">
       <div className="designer-toolbar glass-card-static">
@@ -130,16 +171,19 @@ export default function TemplateDesigner() {
             <Layer>
               <Rect width={template.canvasWidth} height={template.canvasHeight} fill={template.backgroundColor} shadowBlur={16} shadowColor="rgba(0,0,0,0.24)" />
               {template.backgroundImage && <BackgroundImageNode src={template.backgroundImage} width={template.canvasWidth} height={template.canvasHeight} />}
-              {elements.map((element) => (
-                <EditableElement
-                  key={element.id}
-                  element={element}
-                  selected={element.id === state.selectedElementId}
-                  onSelect={() => dispatch({ type: 'SET_SELECTED_ELEMENT', payload: element.id })}
-                  onChange={(patch) => patchElement(element.id, patch)}
-                  onEdit={() => setEditingTextId(element.id)}
-                />
-              ))}
+              {elements.map((element) => {
+                if (!element.visible) return null;
+                return (
+                  <EditableElement
+                    key={element.id}
+                    element={element}
+                    selected={element.id === state.selectedElementId}
+                    onSelect={() => dispatch({ type: 'SET_SELECTED_ELEMENT', payload: element.id })}
+                    onChange={(patch) => patchElement(element.id, patch)}
+                    onEdit={() => setEditingTextId(element.id)}
+                  />
+                );
+              })}
             </Layer>
           </Stage>
           {editingTextId && (() => {
@@ -178,72 +222,125 @@ export default function TemplateDesigner() {
           })()}
         </div>
 
-        <aside className="properties-panel glass-card-static">
-          <h3>Properties</h3>
-          {selected ? (
-            <>
-              <label className="input-group"><span className="input-label">Name</span><input className="input" value={selected.name} onChange={(e) => patchElement(selected.id, { name: e.target.value })} /></label>
-              {selected.type === 'text' ? (
-                <>
-                  <label className="input-group"><span className="input-label">Text</span><textarea className="input" value={selected.text || ''} onChange={(e) => patchElement(selected.id, { text: e.target.value })} /></label>
-                  <div className="grid-2 compact">
-                    <label className="input-group"><span className="input-label">Font size</span><input className="input" type="number" value={selected.fontSize || 24} onChange={(e) => patchElement(selected.id, { fontSize: Number(e.target.value) })} /></label>
-                    <label className="input-group"><span className="input-label">Weight</span><select className="select" value={selected.fontWeight || '400'} onChange={(e) => patchElement(selected.id, { fontWeight: e.target.value })}><option>400</option><option>600</option><option>700</option><option>800</option></select></label>
+        <aside className="properties-panel glass-card-static" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: 0 }}>
+          <div className="segmented" style={{ margin: '1rem 1rem 0' }}>
+            <button className={activeTab === 'properties' ? 'active' : ''} onClick={() => setActiveTab('properties')}><Settings size={16} /> Properties</button>
+            <button className={activeTab === 'layers' ? 'active' : ''} onClick={() => setActiveTab('layers')}><Layers size={16} /> Layers</button>
+          </div>
+          
+          <div style={{ padding: '0 1rem 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {activeTab === 'layers' ? (
+              <div className="layers-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {[...elements].reverse().map((el, i) => (
+                  <div key={el.id} className={`layer-item ${state.selectedElementId === el.id ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: state.selectedElementId === el.id ? 'var(--primary-light)' : 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '0.5rem', cursor: 'pointer' }} onClick={() => dispatch({ type: 'SET_SELECTED_ELEMENT', payload: el.id })}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <button className="icon-btn" onClick={(e) => { e.stopPropagation(); reorderLayer(el.id, 'up'); }} disabled={el.id === elements[elements.length - 1].id}><ChevronUp size={14} /></button>
+                      <button className="icon-btn" onClick={(e) => { e.stopPropagation(); reorderLayer(el.id, 'down'); }} disabled={el.id === elements[0].id}><ChevronDown size={14} /></button>
+                    </div>
+                    <span style={{ flex: 1, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{el.name}</span>
+                    <button className="icon-btn" onClick={(e) => { e.stopPropagation(); patchElement(el.id, { locked: !el.locked }); }}>
+                      {el.locked ? <Lock size={16} /> : <Unlock size={16} />}
+                    </button>
+                    <button className="icon-btn" onClick={(e) => { e.stopPropagation(); patchElement(el.id, { visible: !el.visible }); }}>
+                      {el.visible ? <Eye size={16} /> : <EyeOff size={16} />}
+                    </button>
                   </div>
-                  <label className="input-group"><span className="input-label">Text color</span><input className="input" type="color" value={selected.fill || '#0f172a'} onChange={(e) => patchElement(selected.id, { fill: e.target.value })} /></label>
-                  <div className="segmented">
-                    <button className={selected.align === 'left' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'left' })}><AlignLeft size={16} /></button>
-                    <button className={selected.align === 'center' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'center' })}><AlignCenter size={16} /></button>
-                    <button className={selected.align === 'right' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'right' })}><AlignRight size={16} /></button>
-                  </div>
-                </>
-              ) : null}
-              {selected.type === 'shape' ? (
-                <label className="input-group"><span className="input-label">Background</span><input className="input" type="color" value={selected.backgroundColor || '#155e75'} onChange={(e) => patchElement(selected.id, { backgroundColor: e.target.value })} /></label>
-              ) : null}
-              {selected.type === 'photo' || selected.type === 'image' ? (
-                <>
-                  <label className="input-group">
-                    <span className="input-label">Frame Shape</span>
-                    <select className="select" value={selected.frameShape || 'rect'} onChange={(e) => patchElement(selected.id, { frameShape: e.target.value as 'rect' | 'circle' })}>
-                      <option value="rect">Rectangle</option>
-                      <option value="circle">Circle</option>
-                    </select>
-                  </label>
-                  {selected.frameShape !== 'circle' && (
-                    <label className="input-group"><span className="input-label">Corner Radius</span><input className="input" type="number" value={selected.cornerRadius || 0} onChange={(e) => patchElement(selected.id, { cornerRadius: Number(e.target.value) })} /></label>
-                  )}
-                  <div className="grid-2 compact">
-                    <label className="input-group"><span className="input-label">Border Width</span><input className="input" type="number" value={selected.borderWidth || 0} onChange={(e) => patchElement(selected.id, { borderWidth: Number(e.target.value) })} /></label>
-                    <label className="input-group"><span className="input-label">Border Color</span><input className="input" type="color" value={selected.borderColor || '#ffffff'} onChange={(e) => patchElement(selected.id, { borderColor: e.target.value })} /></label>
-                  </div>
-                  {selected.type === 'image' && (
-                    <button className="btn btn-secondary w-full" style={{ marginBottom: '1rem' }} onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/*';
-                      input.onchange = (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => patchElement(selected.id, { src: ev.target?.result as string });
-                        reader.readAsDataURL(file);
-                      };
-                      input.click();
-                    }}>Replace Image</button>
-                  )}
-                </>
-              ) : null}
-              <div className="grid-2 compact">
-                <label className="input-group"><span className="input-label">Width</span><input className="input" type="number" value={Math.round(selected.width)} onChange={(e) => patchElement(selected.id, { width: Number(e.target.value) })} /></label>
-                <label className="input-group"><span className="input-label">Height</span><input className="input" type="number" value={Math.round(selected.height)} onChange={(e) => patchElement(selected.id, { height: Number(e.target.value) })} /></label>
+                ))}
+                {elements.length === 0 && <p className="muted">No elements yet.</p>}
               </div>
-              <label className="input-group"><span className="input-label">Opacity</span><input className="input" type="range" min="0" max="1" step="0.05" value={selected.opacity} onChange={(e) => patchElement(selected.id, { opacity: Number(e.target.value) })} /></label>
-              <label className="input-group"><span className="input-label">Rotation</span><input className="input" type="number" value={Math.round(selected.rotation)} onChange={(e) => patchElement(selected.id, { rotation: Number(e.target.value) })} /></label>
-            </>
-          ) : (
-            <p className="muted">Select an element on the card to edit its style.</p>
-          )}
+            ) : (
+              <>
+                {selected ? (
+                  <>
+                    <label className="input-group"><span className="input-label">Name</span><input className="input" value={selected.name} onChange={(e) => patchElement(selected.id, { name: e.target.value })} /></label>
+                    <div className="input-group">
+                      <span className="input-label">Align Canvas</span>
+                      <div className="segmented">
+                        <button title="Align Left" onClick={() => alignSelected('left')}><AlignStartVertical size={16} /></button>
+                        <button title="Align Center" onClick={() => alignSelected('center')}><AlignHorizontalSpaceAround size={16} /></button>
+                        <button title="Align Right" onClick={() => alignSelected('right')}><AlignEndVertical size={16} /></button>
+                      </div>
+                      <div className="segmented" style={{ marginTop: '0.5rem' }}>
+                        <button title="Align Top" onClick={() => alignSelected('top')}><AlignStartHorizontal size={16} /></button>
+                        <button title="Align Middle" onClick={() => alignSelected('middle')}><AlignCenterVertical size={16} /></button>
+                        <button title="Align Bottom" onClick={() => alignSelected('bottom')}><AlignEndHorizontal size={16} /></button>
+                      </div>
+                    </div>
+                    {selected.type === 'text' ? (
+                      <>
+                        <label className="input-group"><span className="input-label">Text</span><textarea className="input" value={selected.text || ''} onChange={(e) => patchElement(selected.id, { text: e.target.value })} /></label>
+                        <div className="grid-2 compact">
+                          <label className="input-group"><span className="input-label">Font size</span><input className="input" type="number" value={selected.fontSize || 24} onChange={(e) => patchElement(selected.id, { fontSize: Number(e.target.value) })} /></label>
+                          <label className="input-group"><span className="input-label">Weight</span><select className="select" value={selected.fontWeight || '400'} onChange={(e) => patchElement(selected.id, { fontWeight: e.target.value })}><option>400</option><option>600</option><option>700</option><option>800</option></select></label>
+                        </div>
+                        <label className="input-group"><span className="input-label">Text color</span><input className="input" type="color" value={selected.fill || '#0f172a'} onChange={(e) => patchElement(selected.id, { fill: e.target.value })} /></label>
+                        <div className="segmented">
+                          <button className={selected.align === 'left' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'left' })}><AlignLeft size={16} /></button>
+                          <button className={selected.align === 'center' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'center' })}><AlignCenter size={16} /></button>
+                          <button className={selected.align === 'right' ? 'active' : ''} onClick={() => patchElement(selected.id, { align: 'right' })}><AlignRight size={16} /></button>
+                        </div>
+                        <label className="input-group"><span className="input-label">Letter Spacing</span><input className="input" type="number" value={selected.letterSpacing || 0} step="0.5" onChange={(e) => patchElement(selected.id, { letterSpacing: Number(e.target.value) })} /></label>
+                      </>
+                    ) : null}
+                    {selected.type === 'shape' ? (
+                      <label className="input-group"><span className="input-label">Background</span><input className="input" type="color" value={selected.backgroundColor || '#155e75'} onChange={(e) => patchElement(selected.id, { backgroundColor: e.target.value })} /></label>
+                    ) : null}
+                    {selected.type === 'photo' || selected.type === 'image' ? (
+                      <>
+                        <label className="input-group">
+                          <span className="input-label">Frame Shape</span>
+                          <select className="select" value={selected.frameShape || 'rect'} onChange={(e) => patchElement(selected.id, { frameShape: e.target.value as 'rect' | 'circle' })}>
+                            <option value="rect">Rectangle</option>
+                            <option value="circle">Circle</option>
+                          </select>
+                        </label>
+                        {selected.frameShape !== 'circle' && (
+                          <label className="input-group"><span className="input-label">Corner Radius</span><input className="input" type="number" value={selected.cornerRadius || 0} onChange={(e) => patchElement(selected.id, { cornerRadius: Number(e.target.value) })} /></label>
+                        )}
+                        <div className="grid-2 compact">
+                          <label className="input-group"><span className="input-label">Border Width</span><input className="input" type="number" value={selected.borderWidth || 0} onChange={(e) => patchElement(selected.id, { borderWidth: Number(e.target.value) })} /></label>
+                          <label className="input-group"><span className="input-label">Border Color</span><input className="input" type="color" value={selected.borderColor || '#ffffff'} onChange={(e) => patchElement(selected.id, { borderColor: e.target.value })} /></label>
+                        </div>
+                        {selected.type === 'image' && (
+                          <button className="btn btn-secondary w-full" style={{ marginBottom: '1rem' }} onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = (ev) => patchElement(selected.id, { src: ev.target?.result as string });
+                              reader.readAsDataURL(file);
+                            };
+                            input.click();
+                          }}>Replace Image</button>
+                        )}
+                      </>
+                    ) : null}
+                    <div className="grid-2 compact">
+                      <label className="input-group"><span className="input-label">Width</span><input className="input" type="number" value={Math.round(selected.width)} onChange={(e) => patchElement(selected.id, { width: Number(e.target.value) })} /></label>
+                      <label className="input-group"><span className="input-label">Height</span><input className="input" type="number" value={Math.round(selected.height)} onChange={(e) => patchElement(selected.id, { height: Number(e.target.value) })} /></label>
+                    </div>
+                    <label className="input-group"><span className="input-label">Opacity</span><input className="input" type="range" min="0" max="1" step="0.05" value={selected.opacity} onChange={(e) => patchElement(selected.id, { opacity: Number(e.target.value) })} /></label>
+                    <label className="input-group"><span className="input-label">Rotation</span><input className="input" type="number" value={Math.round(selected.rotation)} onChange={(e) => patchElement(selected.id, { rotation: Number(e.target.value) })} /></label>
+                    
+                    <div className="input-group" style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                      <span className="input-label">Shadow</span>
+                      <label className="input-group"><span className="input-label" style={{fontSize: '0.8rem'}}>Color</span><input className="input" type="color" value={selected.shadowColor || '#000000'} onChange={(e) => patchElement(selected.id, { shadowColor: e.target.value })} /></label>
+                      <label className="input-group"><span className="input-label" style={{fontSize: '0.8rem'}}>Blur</span><input className="input" type="range" min="0" max="50" value={selected.shadowBlur || 0} onChange={(e) => patchElement(selected.id, { shadowBlur: Number(e.target.value) })} /></label>
+                      <div className="grid-2 compact">
+                        <label className="input-group"><span className="input-label" style={{fontSize: '0.8rem'}}>Offset X</span><input className="input" type="number" value={selected.shadowOffsetX || 0} onChange={(e) => patchElement(selected.id, { shadowOffsetX: Number(e.target.value) })} /></label>
+                        <label className="input-group"><span className="input-label" style={{fontSize: '0.8rem'}}>Offset Y</span><input className="input" type="number" value={selected.shadowOffsetY || 0} onChange={(e) => patchElement(selected.id, { shadowOffsetY: Number(e.target.value) })} /></label>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted">Select an element on the card to edit its style.</p>
+                )}
+              </>
+            )}
+          </div>
         </aside>
       </div>
     </div>
@@ -270,7 +367,11 @@ function EditableElement({
     height: element.height,
     rotation: element.rotation,
     opacity: element.opacity,
-    draggable: true,
+    draggable: !element.locked,
+    shadowColor: element.shadowColor,
+    shadowBlur: element.shadowBlur,
+    shadowOffsetX: element.shadowOffsetX,
+    shadowOffsetY: element.shadowOffsetY,
     onClick: onSelect,
     onTap: onSelect,
     onDblClick: onEdit,
@@ -293,7 +394,7 @@ function EditableElement({
   return (
     <Group>
       {element.type === 'text' ? (
-        <Text {...common} text={element.text || ''} fontFamily={element.fontFamily || 'Noto Sans'} fontSize={element.fontSize || 24} fontStyle={element.fontWeight || '400'} fill={element.fill || '#0f172a'} align={element.align || 'left'} lineHeight={element.lineHeight || 1.2} />
+        <Text {...common} text={element.text || ''} fontFamily={element.fontFamily || 'Noto Sans'} fontSize={element.fontSize || 24} fontStyle={element.fontWeight || '400'} fill={element.fill || '#0f172a'} align={element.align || 'left'} lineHeight={element.lineHeight || 1.2} letterSpacing={element.letterSpacing || 0} />
       ) : element.type === 'line' ? (
         <Line {...common} points={element.points || [0, 0, element.width, 0]} stroke={element.stroke || '#155e75'} strokeWidth={element.strokeWidth || 4} />
       ) : element.type === 'photo' ? (

@@ -71,6 +71,13 @@ async function drawElement(
   ctx.rotate(((element.rotation || 0) * Math.PI) / 180);
   ctx.translate(-element.width / 2, -element.height / 2);
 
+  if (element.shadowColor && element.shadowBlur) {
+    ctx.shadowColor = element.shadowColor;
+    ctx.shadowBlur = element.shadowBlur;
+    ctx.shadowOffsetX = element.shadowOffsetX || 0;
+    ctx.shadowOffsetY = element.shadowOffsetY || 0;
+  }
+
   if (element.type === 'shape' || element.type === 'background') {
     ctx.fillStyle = element.backgroundColor || element.fill || '#e2e8f0';
     roundedRect(ctx, 0, 0, element.width, element.height, element.cornerRadius || 0);
@@ -92,12 +99,15 @@ async function drawElement(
     ctx.stroke();
   }
 
-  if (element.type === 'text') {
+    if (element.type === 'text') {
     const text = resolvePlaceholders(element.text || '', record, mapping);
     ctx.fillStyle = element.fill || '#0f172a';
     ctx.font = `${element.fontWeight || '400'} ${element.fontSize || 24}px ${element.fontFamily || 'Noto Sans'}`;
     ctx.textAlign = element.align || 'left';
     ctx.textBaseline = 'top';
+    if (element.letterSpacing !== undefined) {
+      (ctx as any).letterSpacing = `${element.letterSpacing}px`;
+    }
     const lineHeight = (element.fontSize || 24) * (element.lineHeight || 1.2);
     const x = element.align === 'center' ? element.width / 2 : element.align === 'right' ? element.width : 0;
     

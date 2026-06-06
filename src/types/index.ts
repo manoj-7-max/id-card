@@ -82,6 +82,12 @@ export interface CanvasElement {
   borderWidth?: number;
   borderColor?: string;
 
+  // Effects (Shadow)
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+
   // Shape properties
   shapeType?: 'rect' | 'circle' | 'ellipse' | 'triangle' | 'star';
   backgroundColor?: string;
